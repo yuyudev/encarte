@@ -76,6 +76,14 @@
         -----------------------------------------------------------*/
     function assignPositions() {
       const isCapa = document.getElementById('switchCapa').checked;
+
+      selectedItems.forEach(it => {
+        if (isCapa) {
+          if (it.startPos <= CAPA_LIMIT)      it.startPos = 0;   // capa
+        } else {
+          if (it.startPos >= INTERNA_START)   it.startPos = 0;   // internas
+        }
+      });
     
       const preserved = selectedItems.filter(it => it.startPos > 0);
       const toAssign  = selectedItems.filter(it => it.startPos === 0);
@@ -127,7 +135,78 @@
       }
     
       selectedItems = preserved.concat(toAssign).sort((a,b)=>a.timestamp-b.timestamp);
+
+      if (isCapa) {
+        reorganizarInternas();   
+      } else {
+        reorganizarCapa();       
+      }
     }
+
+    function reorganizarInternas () {
+      // ordena internos por ordem de inclusão
+      const internos = selectedItems
+                        .filter(it => it.startPos >= INTERNA_START)
+                        .sort((a,b)=>a.timestamp - b.timestamp);
+
+      let next = INTERNA_START;         // começa sempre no 10
+      internos.forEach(it => {
+        it.startPos = next;
+        next += widthOf(it);            // respeita 1/2/3 colunas
+      });
+    }
+
+    function reorganizarCapa () {
+      // itens que pertencem à capa (1‑9) na ordem de inclusão
+      const capa = selectedItems
+                    .filter(it => it.startPos <= CAPA_LIMIT)
+                    .sort((a,b)=>a.timestamp - b.timestamp);
+
+      // mapa de posições livres (1…9)
+      const free = [];
+      for (let i = 1; i <= CAPA_LIMIT; i++) free.push(i);
+
+      capa.forEach(it => {
+        // remove eventuais posições antigas
+        it.startPos = 0;
+
+        const w = widthOf(it);
+        let pos = 0;
+
+        if (w === 3) {
+          // precisa de 3 consecutivos
+          for (let i = 0; i < free.length - 2; i++) {
+            if (free[i+1] === free[i] + 1 && free[i+2] === free[i] + 2) {
+              pos = free[i];
+              free.splice(i, 3);
+              break;
+            }
+          }
+        } else if (w === 2) {
+          // precisa de 2 consecutivos
+          for (let i = 0; i < free.length - 1; i++) {
+            if (free[i+1] === free[i] + 1) {
+              pos = free[i];
+              free.splice(i, 2);
+              break;
+            }
+          }
+        }
+
+        // fallback simples (quadros avulsos ou se não achou bloco ideal)
+        if (!pos) {
+          pos = free.shift();
+          // remove as cols extras se for duplo/triplo
+          for (let j = 1; j < w; j++) {
+            const idx = free.indexOf(pos + j);
+            if (idx > -1) free.splice(idx, 1);
+          }
+        }
+
+        it.startPos = pos;
+      });
+    }
+
     
     /* -----------------------------------------------------------
         Validações de layout
@@ -312,6 +391,10 @@
     function toggleAccordion(id){
       const el=document.getElementById(id);
       if(el) el.style.display = el.style.display==='none'?'block':'none';
+    }
+
+    function onToggleCapa () {
+      updateSelection();
     }
     
     /* -----------------------------------------------------------
