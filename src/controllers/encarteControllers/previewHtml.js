@@ -140,17 +140,22 @@ async function montarBlocoGrupo(group) {
     products.sort((a, b) => (a.quadroId || 0) - (b.quadroId || 0));
 
     const blocoNome = group.extra1;
-    const varCount  = products.length;
-    const largura = products[0].largura || 1;     
-    let   tipo    = 'simples';
-    
+    const varCount = products.length;
+    const largura = products[0].largura || 1;
+    let tipo = 'simples';
+
     if (largura === 3) {
+      // blocos triplos continuam sendo triplos
       tipo = 'triplo';
     } else if (varCount > 17) {
-      tipo = 'novo';       
-    } else if (largura === 2 || varCount > 6) {
+      // mais de 17 variações gera layout “novo”
+      tipo = 'novo';
+    } else if (varCount > 6) {
+      // somente se o usuário selecionou mais de 6 variações fica duplo
       tipo = 'duplo';
     }
+    // caso contrário permanece 'simples'
+
 
     // Primeiro produto para referência
     const firstProd = products[0];
@@ -444,14 +449,16 @@ function groupByExtra1InOrder(produtos) {
 
 function paginarGrupos(groups) {
   function peso(g) {
-      const largura = g.products[0].largura || 1;
-      if (largura === 3) return 3;          // triplo (3 col.)
-      if (largura === 2) return 2;          // duplo  (2 col.)
-      const varCount = g.products.length;
-      if (varCount > 17) return 3;          // layout “novo”
-      if (varCount > 6)  return 2;          // duplo por quantidade
-      return 1;                             // simples
-    }
+    const largura = g.products[0].largura || 1;
+    const varCount = g.products.length;
+
+    if (largura === 3 || varCount > 17) return 3;
+
+    if (varCount > 6) return 2;
+
+    return 1;
+  }
+
 
   let capaGroups = [];
   let capaWeight = 0;
