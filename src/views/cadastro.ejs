@@ -31,13 +31,14 @@
     function toggleTriplo(gid, chk) {
       const master  = document.querySelector(`.group-checkbox[value="${gid}"]`);
       const hidden  = document.querySelector(`input[name="largura_${gid}"]`);
-      if (!master?.checked) {                // só permite marcar triplo se o grupo já estiver selecionado
+      if (!master?.checked) {
         alert('Selecione o grupo antes de marcar “Triplo”.');
         chk.checked = false;
         return;
       }
       master.dataset.triplo = chk.checked ? '1' : '';
-      hidden.value          = chk.checked ? '3' : '2';     // 2 = duplo, 3 = triplo
+      // se desmarcar triplo, volta para simples (1); duplo é calculado dinamicamente
+      hidden.value          = chk.checked ? '3' : '1';
       updateSelection();
     }
     
@@ -49,23 +50,32 @@
       const temp = [];
       document.querySelectorAll('.group-checkbox').forEach((chk, idx) => {
         if (!chk.checked) return;
-    
+
         const gid        = chk.value;
         const name       = chk.dataset.productName;
-        const varCount   = +chk.dataset.variationsCount;
-        const isDuplo    = varCount > 6;
+        // conta quantas variações estão marcadas no grupo
+        const container  = document.getElementById(gid);
+        const varCount   = container
+          ? container.querySelectorAll('.product-checkbox:checked').length
+          : +chk.dataset.variationsCount;
+
         const triploAttr = chk.dataset.triplo === '1';
+        // quadro duplo apenas se não for triplo e tiver mais de 6 variações selecionadas
+        const isDuplo    = !triploAttr && varCount > 6;
+
         const existing   = selectedItems.find(x => x.groupId === gid);
-    
+
         const obj = existing || {
-          groupId   : gid,
-          productName: name,
+          groupId        : gid,
+          productName    : name,
           variationsCount: varCount,
-          timestamp : now + idx,
-          startPos  : 0
+          timestamp      : now + idx,
+          startPos       : 0
         };
-        obj.isDuplo = isDuplo;
-        obj.triplo  = triploAttr;
+        // atualiza contagem e flags
+        obj.variationsCount = varCount;
+        obj.isDuplo         = isDuplo;
+        obj.triplo          = triploAttr;
         temp.push(obj);
       });
       selectedItems = temp;
@@ -257,18 +267,33 @@
         RENDER – inputs escondidos + preview + contador
         -----------------------------------------------------------*/
     function renderInputs() {
-      document.querySelectorAll('.group-order-input').forEach(i=>{i.value=''; i.title='';});
+      // limpa campos visíveis
+      document.querySelectorAll('.group-order-input').forEach(i=>{
+        i.value='';
+        i.title='';
+      });
+
       selectedItems.forEach(it=>{
-        const inp=document.querySelector(`.group-order-input[name="quadroId_${it.groupId}"]`);
-        if(!inp) return;
-        if (it.triplo){
-          inp.value = it.startPos+2;
-          inp.title = `${it.startPos},${it.startPos+1},${it.startPos+2}`;
-        } else if(it.isDuplo){
-          inp.value = it.startPos+1;
-          inp.title = `${it.startPos},${it.startPos+1}`;
+        const inp    = document.querySelector(`.group-order-input[name="quadroId_${it.groupId}"]`);
+        const hidden = document.querySelector(`input[name="largura_${it.groupId}"]`);
+        if (it.triplo) {
+          if (inp) {
+            inp.value = it.startPos + 2;
+            inp.title = `${it.startPos},${it.startPos+1},${it.startPos+2}`;
+          }
+        } else if (it.isDuplo) {
+          if (inp) {
+            inp.value = it.startPos + 1;
+            inp.title = `${it.startPos},${it.startPos+1}`;
+          }
         } else {
-          inp.value = it.startPos;
+          if (inp) {
+            inp.value = it.startPos;
+          }
+        }
+        // atualiza a largura de acordo com a classificação
+        if (hidden) {
+          hidden.value = it.triplo ? '3' : (it.isDuplo ? '2' : '1');
         }
       });
     }
@@ -501,9 +526,9 @@
                     
                       <!-- hidden que será enviado ao back-end: 1=simple, 2=duplo, 3=triplo -->
                       <input type="hidden"
-                             class="input-largura"
-                             name="largura_<%= gid %>"
-                             value="<%= grupo.length > 6 ? 2 : 1 %>">
+                            class="input-largura"
+                            name="largura_<%= gid %>"
+                            value="1">
                     
                       <% if (grupo.length > 6) { %>
                         <!-- opção Triplo só aparece para grupos com mais de 6 variações -->
@@ -584,8 +609,8 @@
                     
                       <!-- INPUT HIDDEN que enviará a largura (1-simples | 2-duplo | 3-triplo) -->
                       <input type="hidden"
-                             name="largura_<%= gid %>"
-                             value="<%= grupo.length > 6 ? 2 : 1 %>">
+                            name="largura_<%= gid %>"
+                            value="1">
                     
                       <% if (grupo.length > 6) { %>
                         <!-- opção de tornar triplo -->

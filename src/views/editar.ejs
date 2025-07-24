@@ -35,18 +35,19 @@
     /* ===========================================================
       TRIPLO – LIGA/DESLIGA
       ===========================================================*/
-    function toggleTriplo(gid, chk) {
-      const master = document.querySelector(`.group-checkbox[value="${gid}"]`);
-      const hidden = document.querySelector(`input[name="largura_${gid}"]`);
-      if (!master?.checked) {
-        alert('Selecione o grupo antes de marcar “Triplo”.');
-        chk.checked = false;
-        return;
+      function toggleTriplo(gid, chk) {
+        const master = document.querySelector(`.group-checkbox[value="${gid}"]`);
+        const hidden = document.querySelector(`input[name="largura_${gid}"]`);
+        if (!master?.checked) {
+          alert('Selecione o grupo antes de marcar “Triplo”.');
+          chk.checked = false;
+          return;
+        }
+        master.dataset.triplo = chk.checked ? '1' : '';
+        // se desmarcar, volta a ser simples: '1'
+        hidden.value          = chk.checked ? '3' : '1';
+        updateSelection();
       }
-      master.dataset.triplo = chk.checked ? '1' : '';
-      hidden.value          = chk.checked ? '3' : '2';
-      updateSelection();
-    }
 
     /* ===========================================================
       LOOP PRINCIPAL
@@ -70,14 +71,21 @@
 
         const gid   = chk.value;
         const name  = chk.dataset.productName || 'Produto sem nome';
-        const vCnt  = +chk.dataset.variationsCount;
         const info  = quadroInfoMap[gid] || {};
 
-        /* atributos triplo / duplo */
-        const triploAttr  = info.largura === 3 || chk.dataset.triplo === '1';
-        const isDuploAttr = info.largura === 2 || (!triploAttr && vCnt > 6);
+        // conta quantas variações foram marcadas pelo usuário
+        const container = document.getElementById(gid);
+        const vCnt = container
+          ? container.querySelectorAll('.product-checkbox:checked').length
+          : +chk.dataset.variationsCount;
 
-        /* timestamp */
+        /* atributos triplo / duplo */
+        // triplo se vier do BD (info.largura === 3) ou se o usuário marcou o checkbox
+        const triploAttr  = (info.largura === 3) || (chk.dataset.triplo === '1');
+        // duplo apenas se não for triplo e vCnt > 6
+        const isDuploAttr = !triploAttr && vCnt > 6;
+
+        /* timestamp e startPos continuam iguais */
         let timestamp;
         if (info.timestamp) {
           timestamp = info.timestamp;
@@ -88,7 +96,6 @@
           timestamp = newSelectionTimestamps[gid];
         }
 
-        /* startPos a partir do quadroId salvo */
         const dbOrd = Number(info.order) || 0;
         let startPos = dbOrd;
         if (triploAttr)      startPos = dbOrd - 2;
@@ -97,7 +104,7 @@
         temp.push({
           groupId        : gid,
           productName    : name,
-          variationsCount: vCnt,
+          variationsCount: vCnt,    // guarda a contagem dinâmica
           triplo         : triploAttr,
           isDuplo        : isDuploAttr,
           startPos,
@@ -506,8 +513,8 @@
 
                       <!-- largura oculta -->
                       <input type="hidden"
-                             name="largura_<%= accordionProdId %>"
-                             value="<%= qMap[accordionProdId]?.largura||(grupo.length>6?2:1) %>">
+                            name="largura_<%= accordionProdId %>"
+                            value="<%= qMap[accordionProdId]?.largura || 1 %>">
 
                       <!-- triplo checkbox -->
                       <% if (grupo.length>6) { %>
@@ -584,8 +591,8 @@
                              onchange="manualChangeOrderEdit(event)"/>
 
                       <input type="hidden"
-                             name="largura_<%= accordionProdId %>"
-                             value="<%= info.largura||(grupo.length>6?2:1) %>"/>
+                            name="largura_<%= accordionProdId %>"
+                            value="<%= info.largura || 1 %>"/>
                     </div>
                   </div>
                   <div id="<%= accordionProdId %>"
