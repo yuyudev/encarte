@@ -1,0 +1,58 @@
+@font-face {
+    font-family: 'Arial Narrow';
+    src: url('/fonts/arialnarrow.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Arial Narrow';
+    src: url('/fonts/arialnarrow_bold.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+}
+
+* {
+    font-family: 'Arial Narrow';
+}
+
+body { margin:0; padding:0; font-family: 'Arial Narrow'; }
+.pagina { page-break-after: always; position: relative; min-height: 1000px; }
+.box-grids { padding: 30px 60px 0 }
+.capa {
+  background-image: url('/img/fundo-capa.png');
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  min-height: 100vh; /* ocupa 100% da altura da tela */
+}
+
+.interna {
+
+}
+
+.quadro, .quadro-double { page-break-inside: avoid; background-color: #fff; border-radius: 10px; }
+.header-quadro {
+  background-color: #c51e24; color: #fff;
+  height: 30px; display: flex; justify-content: center; align-items: center;
+  border-radius: 10px 10px 0 0;
+}
+
+.interna .header-quadro {
+  background-color: #f1f1f2;
+  color: #000;
+  height: 30px;
+  font-weight: 900;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 5px 5px 0 0;
+}
+
+.blue-line { display: block; width: 100%; height: 7px; background-color: #193c69; }
+.interna .blue-line { background-image: url('/img/blue-line-interna.png') }
+.box-infos { height: 250px; display: flex; flex-direction: column; justify-content: space-between; }
+.logo-fabricante { height: 25px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #ddd; text-align: center; font-size: 11px; background-color: #fff; font-weight: 800; }
+th { background: #e6e7e8; font-weight: bold; }

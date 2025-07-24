@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8">
+    <title>Upload de Logos de Fabricantes</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/upload.css">
+  </head>
+  <body>
+    <header>
+      <a href="/dashboard" class="back-button">&larr; Voltar ao Dashboard</a>
+    </header>
+    <h1>Upload de Logos de Fabricantes</h1>
+    <form action="/upload/logos" method="post" enctype="multipart/form-data">
+      <label>Selecione as logos:</label>
+      <input type="file" name="images" accept="image/*" multiple required>
+      <button type="submit">Enviar Logos</button>
+    </form>
+  </body>
+</html>

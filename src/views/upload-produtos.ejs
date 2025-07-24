@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8">
+    <title>Upload de Imagens de Produtos</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/upload.css">
+  </head>
+  <body>
+    <header>
+      <a href="/dashboard" class="back-button">&larr; Voltar ao Dashboard</a>
+    </header>
+    <h1>Upload de Imagens de Produtos</h1>
+    <form action="/upload/produtos" method="post" enctype="multipart/form-data">
+      <label>Selecione as imagens de produtos:</label>
+      <input type="file" name="images" accept="image/*" multiple required>
+      <button type="submit">Enviar Imagens de Produtos</button>
+    </form>
+  </body>
+</html>

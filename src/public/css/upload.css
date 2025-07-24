@@ -1,0 +1,78 @@
+/* ========= RESET E ESTILOS BASE ========= */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    background-color: #f5f5f5;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #333;
+    padding: 20px;
+  }
+  
+  /* ========= Cabeçalho e Botão Voltar ========= */
+  header {
+    margin-bottom: 20px;
+  }
+  .back-button {
+    display: inline-block;
+    padding: 8px 12px;
+    background-color: #007bff;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+  .back-button:hover {
+    background-color: #0056b3;
+  }
+  
+  /* ========= Títulos ========= */
+  h1 {
+    text-align: center;
+    margin-bottom: 20px;
+    font-weight: 500;
+  }
+  
+  /* ========= Formulários ========= */
+  form {
+    max-width: 600px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 5px rgba(0,0,0,0.1);
+  }
+  form label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  form input[type="file"] {
+    display: block;
+    margin-bottom: 20px;
+  }
+  form button {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    background-color: #28a745;
+    border: none;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  form button:hover {
+    background-color: #218838;
+  }
+  
+  /* ========= Mensagens de Upload ========= */
+  .upload-message {
+    text-align: center;
+    font-size: 18px;
+    margin-bottom: 20px;
+  }
+  

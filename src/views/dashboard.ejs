@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+
+<body>
+  <div>
+    <h1>Bem-vindo, <%= user.nome %>!</h1>
+    <p>Escolha uma ação:</p>
+
+    <a href="/encartes/new">
+      <button>Cadastrar Novo Encarte</button>
+    </a>
+
+    <a href="/encartes">
+      <button>Histórico de Encartes</button>
+    </a>
+
+    <a href="/produtos/tabela">
+      <button>Tabela de Produtos</button>
+    </a>
+
+    <a href="/fabricantes/tabela">
+      <button>Tabela de Fabricantes</button>
+    </a>
+
+    <a href="/upload/produtos">
+      <button>Upload Imagens de Produtos</button>
+    </a>
+
+    <a href="/upload/logos">
+      <button>Upload Logos de Fabricantes</button>
+    </a>
+
+    <!-- Botões de sincronização -->
+    <button id="syncProductsButton">Sincronizar Produtos</button>
+    <button id="syncFabricantesButton">Sincronizar Fabricantes</button>
+
+    <!-- Mensagens de status -->
+    <div id="syncProductsMessage" style="text-align:center; margin-top: 10px;"></div>
+    <div id="syncFabricantesMessage" style="text-align:center; margin-top: 10px;"></div>
+
+    <br><br>
+    <a href="/auth/logout">
+      <button class="logout-button">Sair</button>
+    </a>
+
+  </div>
+
+  <script>
+    document.getElementById('syncProductsButton').addEventListener('click', function (e) {
+      e.preventDefault();
+      const button = e.target;
+      const messageDiv = document.getElementById('syncProductsMessage');
+      messageDiv.textContent = 'Sincronizando produtos...';
+      button.disabled = true;
+  
+      fetch('/sync-products')
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            // substitui a frase aqui quando o serviço terminar com sucesso
+            messageDiv.textContent = 'Produtos atualizados com sucesso!';
+          } else {
+            messageDiv.textContent = data.message;
+          }
+          button.disabled = false;
+        })
+        .catch(err => {
+          messageDiv.textContent = 'Erro durante a sincronização de produtos.';
+          button.disabled = false;
+        });
+    });
+  
+    document.getElementById('syncFabricantesButton').addEventListener('click', function (e) {
+      e.preventDefault();
+      const button = e.target;
+      const messageDiv = document.getElementById('syncFabricantesMessage');
+      messageDiv.textContent = 'Sincronizando fabricantes...';
+      button.disabled = true;
+  
+      fetch('/sync-fabricantes')
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            messageDiv.textContent = data.message;
+          } else {
+            messageDiv.textContent = data.message;
+          }
+          button.disabled = false;
+        })
+        .catch(err => {
+          messageDiv.textContent = 'Erro durante a sincronização de fabricantes.';
+          button.disabled = false;
+        });
+    });
+  </script>
+  
+</body>
+
+</html>

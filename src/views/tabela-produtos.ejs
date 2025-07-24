@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8">
+    <title>Infos do Sistema - Tabela de Produtos</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/produtos.css">
+  </head>
+  <body>
+    <!-- Cabeçalho com botão voltar -->
+    <header>
+      <a href="/dashboard" class="back-button">&larr; Voltar</a>
+    </header>
+
+    <h1>Infos do Sistema - Tabela de Produtos</h1>
+    
+    <!-- Filtros -->
+    <div class="filter-container">
+      <div class="filter-item">
+        <label for="fabricante-filter">Fabricante:</label>
+        <select id="fabricante-filter">
+          <option value="" selected>Todos os Fabricantes</option>
+          <% fabricantes.forEach(function(fab) { %>
+            <option value="<%= fab.codigoFabricante %>"><%= fab.nomeFabricante %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div class="filter-item">
+        <label for="codigo-filter">Código do Produto (SKU):</label>
+        <input type="text" id="codigo-filter" placeholder="Buscar por SKU">
+      </div>
+      <div class="filter-item">
+        <label for="nome-filter">Nome do Produto (Extra1):</label>
+        <input type="text" id="nome-filter" placeholder="Buscar pelo nome">
+      </div>
+      <div class="filter-item">
+        <button id="btn-buscar">Buscar</button>
+      </div>
+    </div>
+    
+    <!-- Tabela de Produtos (inicialmente vazia) -->
+    <table class="produtos-table">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Nome (Extra1)</th>
+          <th>Foto</th>
+          <th>Preço (Tabela 3)</th>
+          <th>Quantidade (Extra3)</th>
+        </tr>
+      </thead>
+      <tbody id="produtos-table-body">
+        <!-- As linhas serão inseridas via JavaScript -->
+      </tbody>
+    </table>
+    
+    <!-- Injetando os dados do servidor -->
+    <script>
+      // Dados enviados do controller
+      const allProducts = <%- JSON.stringify(produtos) %>;
+      const imagens = <%- JSON.stringify(arquivos) %>;
+    </script>
+    
+    <script>
+      // Função que busca, para cada produto, a imagem correspondente (se existir)
+      function buscarImagem(sku) {
+        for (let i = 0; i < imagens.length; i++) {
+          if (imagens[i].includes(sku)) {
+            return imagens[i];
+          }
+        }
+        return null;
+      }
+      
+      // Função para renderizar a tabela com os produtos filtrados
+      function renderTabela(filteredProducts) {
+        const tbody = document.getElementById('produtos-table-body');
+        tbody.innerHTML = ''; // Limpa a tabela
+
+        filteredProducts.forEach(prod => {
+          const tr = document.createElement('tr');
+          // Atributos para filtragem (usados no script)
+          tr.setAttribute('data-fabricante', prod.codigoFabricante || '');
+          tr.setAttribute('data-codigo', prod.codigo || '');
+          tr.setAttribute('data-nome', (prod.extra1 || '').toLowerCase());
+          
+          // Coluna SKU
+          const tdSku = document.createElement('td');
+          tdSku.textContent = prod.codigo;
+          tr.appendChild(tdSku);
+
+          // Coluna Nome (Extra1)
+          const tdNome = document.createElement('td');
+          tdNome.textContent = prod.extra1 || '';
+          tr.appendChild(tdNome);
+          
+          // Coluna Foto
+          const tdFoto = document.createElement('td');
+          const imgFile = buscarImagem(prod.codigo);
+          if (imgFile) {
+            const img = document.createElement('img');
+            img.src = `/img/produtos/${imgFile}`;
+            img.alt = "Foto do produto";
+            tdFoto.appendChild(img);
+          } else {
+            tdFoto.innerHTML = '<span>Sem foto</span>';
+          }
+          tr.appendChild(tdFoto);
+          
+          // Coluna Preço (Tabela 3) – editável
+          const tdPreco = document.createElement('td');
+          const inputPreco = document.createElement('input');
+          inputPreco.type = "number";
+          inputPreco.step = "0.01";
+          inputPreco.value = prod.precoTabela3;
+          inputPreco.classList.add('input-preco');
+          inputPreco.setAttribute('data-produto-id', prod.id);
+          tdPreco.appendChild(inputPreco);
+          tr.appendChild(tdPreco);
+          
+          // Coluna Quantidade (Extra3) – editável
+          const tdQuant = document.createElement('td');
+          const inputQuant = document.createElement('input');
+          inputQuant.type = "number";
+          inputQuant.value = prod.extra3;
+          inputQuant.classList.add('input-quantidade');
+          inputQuant.setAttribute('data-produto-id', prod.id);
+          tdQuant.appendChild(inputQuant);
+          tr.appendChild(tdQuant);
+          
+          tbody.appendChild(tr);
+        });
+        adicionarListenersInputs();
+      }
+      
+      // Função para filtrar produtos com base nos filtros
+      function filtrarProdutos() {
+        const fabricanteValue = document.getElementById('fabricante-filter').value;
+        const codigoSearch = document.getElementById('codigo-filter').value.toLowerCase();
+        const nomeSearch = document.getElementById('nome-filter').value.toLowerCase();
+        
+        // Se nenhum campo de busca estiver preenchido, podemos retornar um array vazio (tabela vazia)
+        if (!codigoSearch && !nomeSearch && fabricanteValue === '') {
+          return [];
+        }
+        
+        return allProducts.filter(prod => {
+          // Se fabricanteValue é vazio, não filtra por fabricante
+          const matchFabricante = fabricanteValue === '' || prod.codigoFabricante == fabricanteValue;
+          const matchCodigo = prod.codigo.toLowerCase().includes(codigoSearch);
+          const matchNome = (prod.extra1 || '').toLowerCase().includes(nomeSearch);
+          return matchFabricante && matchCodigo && matchNome;
+        });
+      }
+      
+      // Função chamada ao clicar no botão "Buscar"
+      function buscarProdutos() {
+        const produtosFiltrados = filtrarProdutos();
+        renderTabela(produtosFiltrados);
+      }
+      
+      document.getElementById('btn-buscar').addEventListener('click', buscarProdutos);
+      
+      // Função AJAX para atualizar o produto quando os inputs forem modificados
+      async function atualizarProduto(id, precoTabela3, extra3) {
+        try {
+          const response = await fetch('/produtos/update-info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, precoTabela3, extra3 })
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            alert('Erro: ' + data.message);
+          }
+        } catch (error) {
+          alert('Erro ao atualizar o produto.');
+        }
+      }
+      
+      // Adiciona event listeners aos inputs da tabela
+      function adicionarListenersInputs() {
+        document.querySelectorAll('.input-preco').forEach(input => {
+          input.addEventListener('change', (event) => {
+            const id = event.target.dataset.produtoId;
+            const preco = parseFloat(event.target.value) || 0;
+            const quantidadeElem = document.querySelector('.input-quantidade[data-produto-id="' + id + '"]');
+            const quantidade = quantidadeElem ? parseFloat(quantidadeElem.value) || 0 : 0;
+            atualizarProduto(id, preco, quantidade);
+          });
+        });
+        
+        document.querySelectorAll('.input-quantidade').forEach(input => {
+          input.addEventListener('change', (event) => {
+            const id = event.target.dataset.produtoId;
+            const quantidade = parseFloat(event.target.value) || 0;
+            const precoElem = document.querySelector('.input-preco[data-produto-id="' + id + '"]');
+            const preco = precoElem ? parseFloat(precoElem.value) || 0 : 0;
+            atualizarProduto(id, preco, quantidade);
+          });
+        });
+      }
+      
+      // Inicialmente, mostra a tabela vazia
+      renderTabela([]);
+    </script>
+  </body>
+</html>

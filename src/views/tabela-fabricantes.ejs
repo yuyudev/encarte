@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Tabela de Fabricantes</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/fabricantes.css">
+</head>
+
+<body>
+  <!-- Cabeçalho com botão voltar -->
+  <header>
+    <a href="/dashboard" class="back-button">&larr; Voltar</a>
+  </header>
+
+  <h1>Tabela de Fabricantes</h1>
+
+  <table class="fabricantes-table">
+    <thead>
+      <tr>
+        <th>Código</th>
+        <th>Nome</th>
+        <th>Logotipo</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% fabricantes.forEach(fab=> { %>
+        <tr>
+          <td>
+            <%= fab.codigoFabricante %>
+          </td>
+          <td>
+            <%= fab.nomeFabricante %>
+          </td>
+          <td>
+            <% if (fab.imagemFabricante && fab.imagemFabricante.trim() !=='' ) { %>
+              <img src="/img/logos/<%= fab.imagemFabricante %>" alt="Logotipo"
+                style="max-width:100px;max-height:50px;cursor:pointer;"
+                onclick="window.location.href='/fabricantes/upload/<%= fab.codigoFabricante %>'" />
+              <% } else { %>
+                <a href="/fabricantes/upload/<%= fab.codigoFabricante %>">Upload Logotipo</a>
+                <% } %>
+          </td>
+        </tr>
+        <% }); %>
+    </tbody>
+  </table>
+</body>
+
+</html>

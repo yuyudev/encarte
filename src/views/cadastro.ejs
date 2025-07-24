@@ -1,0 +1,558 @@
+<%
+  // IDs pré-selecionados (vazio em cadastro)
+  const spids = Array.isArray(selectedProductIds) ? selectedProductIds : [];
+%>
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Cadastrar Novo Encarte</title>
+  <link rel="stylesheet" href="/css/styles.css"/>
+  <link rel="stylesheet" href="/css/cadastro.css"/>
+
+  <script>
+    /* ===========================================================
+        ESTADO & CONSTANTES
+        ===========================================================*/
+    let selectedItems = [];                     // coleção de grupos escolhidos
+    const spids = <%- JSON.stringify(spids) %>; // pré-selecionados vindos do BD
+    
+    const CAPA_LIMIT    = 9;   // 1-9 – quadros da capa
+    const INTERNA_START = 10;  // 10…  – internas se switch capa desligado
+    
+    /* ===========================================================
+        FUNÇÕES AUXILIARES
+        ===========================================================*/
+    const widthOf = it => it.triplo ? 3 : (it.isDuplo ? 2 : 1);
+    
+    /* -----------------------------------------------------------
+        Triplo – liga/desliga
+        -----------------------------------------------------------*/
+    function toggleTriplo(gid, chk) {
+      const master  = document.querySelector(`.group-checkbox[value="${gid}"]`);
+      const hidden  = document.querySelector(`input[name="largura_${gid}"]`);
+      if (!master?.checked) {                // só permite marcar triplo se o grupo já estiver selecionado
+        alert('Selecione o grupo antes de marcar “Triplo”.');
+        chk.checked = false;
+        return;
+      }
+      master.dataset.triplo = chk.checked ? '1' : '';
+      hidden.value          = chk.checked ? '3' : '2';     // 2 = duplo, 3 = triplo
+      updateSelection();
+    }
+    
+    /* -----------------------------------------------------------
+        Reconstrói selectedItems a partir dos checkboxes de grupo
+        -----------------------------------------------------------*/
+    function rebuildSelectedItems() {
+      const now  = Date.now();
+      const temp = [];
+      document.querySelectorAll('.group-checkbox').forEach((chk, idx) => {
+        if (!chk.checked) return;
+    
+        const gid        = chk.value;
+        const name       = chk.dataset.productName;
+        const varCount   = +chk.dataset.variationsCount;
+        const isDuplo    = varCount > 6;
+        const triploAttr = chk.dataset.triplo === '1';
+        const existing   = selectedItems.find(x => x.groupId === gid);
+    
+        const obj = existing || {
+          groupId   : gid,
+          productName: name,
+          variationsCount: varCount,
+          timestamp : now + idx,
+          startPos  : 0
+        };
+        obj.isDuplo = isDuplo;
+        obj.triplo  = triploAttr;
+        temp.push(obj);
+      });
+      selectedItems = temp;
+    }
+    
+    /* -----------------------------------------------------------
+        Atribui/realoca posições (startPos) respeitando switch capa
+        -----------------------------------------------------------*/
+    function assignPositions() {
+      const isCapa = document.getElementById('switchCapa').checked;
+    
+      const preserved = selectedItems.filter(it => it.startPos > 0);
+      const toAssign  = selectedItems.filter(it => it.startPos === 0);
+    
+      preserved.sort((a,b)=>a.timestamp-b.timestamp);
+      toAssign .sort((a,b)=>a.timestamp-b.timestamp);
+    
+      /* ---------- CAPA (1-9) ----------*/
+      if (isCapa) {
+        const occupied = new Set();
+        // marca ocupados até 9
+        preserved.forEach(it=>{
+          if (it.startPos<=CAPA_LIMIT){
+            for (let i=0;i<widthOf(it);i++) occupied.add(it.startPos+i);
+          }
+        });
+    
+        const free=[];
+        for(let i=1;i<=CAPA_LIMIT;i++) if(!occupied.has(i)) free.push(i);
+    
+        toAssign.forEach(it=>{
+          const w = widthOf(it);
+          if (w===3) {                // triplo precisa de 3 consecutivos
+            const idx = free.findIndex((v,j)=>free[j+1]===v+1 && free[j+2]===v+2);
+            it.startPos = idx>-1 ? free[idx] : free[0]||1;
+            free.splice(idx>-1?idx:0,3);
+          } else if (w===2){          // duplo precisa de 2 consecutivos
+            const idx = free.findIndex((v,j)=>free[j+1]===v+1);
+            it.startPos = idx>-1 ? free[idx] : free[0]||1;
+            free.splice(idx>-1?idx:0,2);
+          } else {                    // simples
+            it.startPos = free.shift()||1;
+          }
+        });
+    
+      /* ---------- INTERNAS (>=10) ----------*/
+      } else {
+        let next = INTERNA_START;
+        preserved.forEach(it=>{
+          if (it.startPos >= INTERNA_START){
+            const end = it.startPos + widthOf(it) - 1;
+            if (end >= next) next = end + 1;
+          }
+        });
+        toAssign.forEach(it=>{
+          it.startPos = next;
+          next += widthOf(it);
+        });
+      }
+    
+      selectedItems = preserved.concat(toAssign).sort((a,b)=>a.timestamp-b.timestamp);
+    }
+    
+    /* -----------------------------------------------------------
+        Validações de layout
+        -----------------------------------------------------------*/
+    function validateLayout() {
+      const isCapa = document.getElementById('switchCapa').checked;
+    
+      // 1. capa não pode extrapolar 1-9
+      if (isCapa && selectedItems.some(it=>{
+        if (it.startPos>CAPA_LIMIT) return false;
+        return it.startPos+widthOf(it)-1 > CAPA_LIMIT;
+      })) { alert('Capa só possui 9 quadros.'); removeLast(); return false; }
+    
+      // 2. início inválido
+      for(const it of selectedItems){
+        const col = ((it.startPos-1)%3)+1;
+        if (it.triplo && col!==1){ alert('Triplo deve iniciar na coluna 1.'); removeGroup(it.groupId); return false; }
+        if (it.isDuplo && !it.triplo && col===3){ alert('Duplo não pode iniciar na coluna 3.'); removeGroup(it.groupId); return false; }
+      }
+    
+      // 3. linha não excede 3 colunas
+      const map={};
+      for(const it of selectedItems){
+        const line=Math.ceil(it.startPos/3);
+        map[line]=(map[line]||0)+widthOf(it);
+        if(map[line]>3){ alert('Linha com mais de 3 colunas.'); removeLast(); return false; }
+      }
+      return true;
+    }
+    
+
+    function updateSelection () {
+      rebuildSelectedItems();      // 1) refaz lista de grupos
+      assignPositions();           // 2) calcula os quadros
+      if (!validateLayout()) {     // 3) aborta se algo inválido
+        return;
+      }
+      renderInputs();              // 4) preenche inputs ocultos
+      renderTable();               // 5) atualiza preview lateral
+      renderCount();               // 6) contador de quadros
+    }
+
+
+    window.updateSelection = updateSelection;
+
+
+    /* -----------------------------------------------------------
+        RENDER – inputs escondidos + preview + contador
+        -----------------------------------------------------------*/
+    function renderInputs() {
+      document.querySelectorAll('.group-order-input').forEach(i=>{i.value=''; i.title='';});
+      selectedItems.forEach(it=>{
+        const inp=document.querySelector(`.group-order-input[name="quadroId_${it.groupId}"]`);
+        if(!inp) return;
+        if (it.triplo){
+          inp.value = it.startPos+2;
+          inp.title = `${it.startPos},${it.startPos+1},${it.startPos+2}`;
+        } else if(it.isDuplo){
+          inp.value = it.startPos+1;
+          inp.title = `${it.startPos},${it.startPos+1}`;
+        } else {
+          inp.value = it.startPos;
+        }
+      });
+    }
+    
+    function renderTable() {
+      const tb=document.getElementById('selectedGroupsTableBody');
+      tb.innerHTML='';
+      selectedItems.sort((a,b)=>a.startPos-b.startPos).forEach(it=>{
+        const tr=document.createElement('tr');
+        const td1=document.createElement('td');
+        td1.style.width='80px';
+        td1.textContent = it.triplo
+          ? `${it.startPos},${it.startPos+1},${it.startPos+2}`
+          : it.isDuplo
+            ? `${it.startPos},${it.startPos+1}`
+            : it.startPos;
+        tr.appendChild(td1);
+        const td2=document.createElement('td');
+        const x=document.createElement('span');
+        x.textContent='X'; x.style.color='red'; x.style.marginRight='8px'; x.style.cursor='pointer';
+        x.onclick=()=>removeGroup(it.groupId);
+        td2.appendChild(x);
+        const nm=document.createElement('span');
+        nm.textContent=it.productName; nm.style.textDecoration='underline'; nm.style.cursor='pointer';
+        nm.onclick=()=>toggleVars(it.groupId);
+        td2.appendChild(nm);
+        tr.appendChild(td2);
+        tb.appendChild(tr);
+    
+        // variações (linha oculta)
+        const trv=document.createElement('tr'); trv.id='vars-'+it.groupId; trv.style.display='none';
+        const tdv=document.createElement('td'); tdv.colSpan=2;
+        const cont=document.getElementById(it.groupId);
+        if(cont){
+          const sels=cont.querySelectorAll('.product-checkbox:checked');
+          if(sels.length){
+            const ul=document.createElement('ul');
+            sels.forEach(ch=>{
+              const li=document.createElement('li');
+              const xv=document.createElement('span');
+              xv.textContent='X'; xv.style.color='red'; xv.style.cursor='pointer'; xv.style.marginRight='5px';
+              xv.onclick=()=>{ch.checked=false;updateSelection();};
+              li.appendChild(xv);
+              li.appendChild(document.createTextNode(ch.parentElement.textContent.trim()));
+              ul.appendChild(li);
+            });
+            tdv.appendChild(ul);
+          } else tdv.textContent='Nenhuma variação selecionada.';
+        } else tdv.textContent='Nenhuma variação selecionada.';
+        trv.appendChild(tdv); tb.appendChild(trv);
+      });
+    }
+    
+    function renderCount(){
+      let tot=0; selectedItems.forEach(it=>tot+=widthOf(it));
+      document.getElementById('quadrosCount').textContent=tot;
+    }
+    
+    /* -----------------------------------------------------------
+        REMOÇÕES & TOGGLES
+        -----------------------------------------------------------*/
+    function removeGroup(gid){
+      const chk=document.querySelector(`.group-checkbox[value="${gid}"]`);
+      if(chk) chk.checked=false;
+      updateSelection();
+    }
+    function removeLast(){
+      const it=selectedItems.pop();
+      if(it) removeGroup(it.groupId);
+    }
+    function toggleVars(gid){
+      const r=document.getElementById('vars-'+gid);
+      if(r) r.style.display = r.style.display==='none'?'':'none';
+    }
+    
+    /* -----------------------------------------------------------
+        ALTERAÇÃO MANUAL DO INPUT (troca de posição pelo usuário)
+        -----------------------------------------------------------*/
+    function manualChangeOrder(evt){
+      const inp   = evt.target;
+      const gid   = inp.getAttribute('data-group-id');
+      const item  = selectedItems.find(it=>it.groupId===gid);
+      if(!item) return;
+    
+      const val   = parseInt(inp.value,10);
+      if(isNaN(val)){ alert('Valor inválido'); renderInputs(); return; }
+    
+      const offset = item.triplo ? 2 : (item.isDuplo ? 1 : 0);
+      const desiredStart = val - offset;
+      if(desiredStart<1){ alert('Posição inválida'); renderInputs(); return; }
+    
+      // verifica colisão
+      const collision = selectedItems.find(it=>{
+        if(it.groupId===gid) return false;
+        const rangeA=[desiredStart, desiredStart+offset];
+        const rangeB=[it.startPos, it.startPos+widthOf(it)-1];
+        return !(rangeA[1]<rangeB[0] || rangeB[1]<rangeA[0]);
+      });
+      if(collision){ alert('Essa posição conflita com outro quadro.'); renderInputs(); return; }
+    
+      item.startPos = desiredStart;
+      // reordenamos outros mantendo gaps
+      selectedItems.sort((a,b)=>a.startPos-b.startPos);
+      updateSelection();
+    }
+    
+    /* -----------------------------------------------------------
+        CHECK/UNCHECK EM MASSA & ACORDEÃO
+        -----------------------------------------------------------*/
+    function marcarTodosProdutos(fid,e){
+      document.querySelectorAll(`#fab-${fid} .group-checkbox, #fab-${fid} .product-checkbox`)
+              .forEach(i=>i.checked=e.target.checked);
+      updateSelection();
+    }
+    function toggleGroupChildren(gid,_,e){
+      document.querySelectorAll(`#${gid} .product-checkbox`)
+              .forEach(c=>c.checked=e.target.checked);
+      updateSelection();
+    }
+    function toggleAccordion(id){
+      const el=document.getElementById(id);
+      if(el) el.style.display = el.style.display==='none'?'block':'none';
+    }
+    
+    /* -----------------------------------------------------------
+        EVENTO INICIAL
+        -----------------------------------------------------------*/
+    window.onload = () => {
+      // pré-marca variações vindas do BD
+      document.querySelectorAll('.product-checkbox').forEach(chk=>{
+        if(spids.includes(chk.value.split('|')[0])) chk.checked = true;
+      });
+      // listener do switch capa
+      const sw=document.getElementById('switchCapa');
+      if(sw) sw.addEventListener('change', onToggleCapa);
+    
+      updateSelection();
+    };
+  </script>
+    
+</head>
+<body>
+  <header>
+    <a href="/dashboard" class="back-button">&larr; Voltar</a>
+  </header>
+
+  <h1>Cadastrar Novo Encarte</h1>
+  <div class="cadastro-container">
+    <div class="cadastro-form">
+      <form method="POST" action="/encartes">
+        <!-- switch editar capa -->
+        <div class="switch-capa-wrapper" style="margin:18px 0;">
+          <label class="switch-capa-label" style="font-weight:600;">
+            <input type="checkbox" id="switchCapa" onchange="onToggleCapa()" checked>
+            <span class="slider-capa"></span>
+            Editar capa&nbsp;(quadros 1&nbsp;– 9)
+          </label>
+        </div>
+
+        <label>Título do Encarte:
+          <input name="titulo" required>
+        </label><br/><br/>
+
+        <label>Texto Legal:
+          <textarea name="textoLegal" required></textarea>
+        </label><br/><br/>
+
+        <label>Texto Legal Capa:
+          <textarea name="textoLegalCapa" required></textarea>
+        </label><br/><br/>
+
+        <p>Selecione os produtos:</p>
+
+        <% 
+          // ordena alfabeticamente fabricantes
+          const fabKeys = Object.keys(fabricantesMap).sort((a,b)=>
+            fabricantesMap[a].fabricante.nomeFabricante
+              .localeCompare(fabricantesMap[b].fabricante.nomeFabricante,'pt','base'));
+          fabKeys.forEach(fabKey => {
+            const fab = fabricantesMap[fabKey];
+        %>
+          <div class="accordion">
+            <div class="accordion-header"
+                 onclick="toggleAccordion('fab-<%= fab.fabricante.codigoFabricante %>')">
+              <span class="manufacturer-title">
+                [Fabricante] <%= fab.fabricante.nomeFabricante %>
+              </span>
+              <input type="checkbox"
+                     onclick="marcarTodosProdutos('<%= fab.fabricante.codigoFabricante %>',event)">
+            </div>
+            <div id="fab-<%= fab.fabricante.codigoFabricante %>"
+                 class="accordion-content" style="display:none;">
+              <% Object.keys(fab.produtos)
+                   .sort((x,y)=>x.localeCompare(y,'pt','base'))
+                   .forEach(extra1Key => {
+                    const grupo = fab.produtos[extra1Key];
+                    const sanitized = extra1Key.toLowerCase()
+                                          .replace(/\s+/g,'-')
+                                          .replace(/[^a-z0-9-]+/g,'');
+                    const gid = `prod-${fab.fabricante.codigoFabricante}-${sanitized}`;
+              %>
+                <div class="group-container">
+                  <div class="accordion-header" onclick="toggleAccordion('<%= gid %>')">
+                    <div class="group-info">
+                      <span class="group-title"><%= extra1Key %></span>
+                      <span class="group-count">(<%= grupo.length %> var.)</span>
+                    </div>
+                    <div class="group-actions">
+
+                      <!-- checkbox que seleciona o grupo inteiro -->
+                      <input type="checkbox"
+                             class="group-checkbox"
+                             onclick="toggleGroupChildren('<%= gid %>', <%= grupo.length %>, event)"
+                             name="grupoSelecionado[]"
+                             value="<%= gid %>"
+                             data-product-name="<%= extra1Key %>"
+                             data-variations-count="<%= grupo.length %>">
+                    
+                      <!-- campo onde o usuário pode editar a posição do quadro                -->
+                      <!-- (o valor salvo para duplo é start+1  /  para triplo é start+2)       -->
+                      <input type="text"
+                             class="group-order-input"
+                             name="quadroId_<%= gid %>"
+                             data-group-id="<%= gid %>"
+                             onchange="manualChangeOrder(event)">
+                    
+                      <!-- hidden que será enviado ao back-end: 1=simple, 2=duplo, 3=triplo -->
+                      <input type="hidden"
+                             class="input-largura"
+                             name="largura_<%= gid %>"
+                             value="<%= grupo.length > 6 ? 2 : 1 %>">
+                    
+                      <% if (grupo.length > 6) { %>
+                        <!-- opção Triplo só aparece para grupos com mais de 6 variações -->
+                        <label class="triplo-label" style="margin-left:6px;font-size:11px;">
+                          <input type="checkbox"
+                                 class="triplo-checkbox"
+                                 onchange="toggleTriplo('<%= gid %>', this)">
+                          Triplo
+                        </label>
+                      <% } %>
+                    
+                    </div>
+                    
+                  </div>
+                  <div id="<%= gid %>" class="accordion-content" style="display:none;">
+                    <% grupo.forEach(varProd=>{
+                         const val = `${varProd.id}|${gid}`;
+                    %>
+                      <label class="checkbox-group">
+                        <input type="checkbox"
+                               class="product-checkbox"
+                               name="produtosSelecionados[]"
+                               value="<%= val %>"
+                               onchange="updateSelection()">
+                        <%= varProd.codigo %> – <%= varProd.nome %> (Est: <%= varProd.estoqueAtual %>)
+                      </label><br/>
+                    <% }) %>
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+          </div>
+        <% }) %>
+
+        <% if(Object.keys(gruposSemFab).length){ %>
+          <div class="accordion">
+            <div class="accordion-header"
+                 onclick="toggleAccordion('fab-nao-identificado')">
+              <span class="manufacturer-title">
+                [Fabricante Não Identificado]
+              </span>
+              <input type="checkbox"
+                     onclick="marcarTodosProdutos('nao-identificado',event)">
+            </div>
+            <div id="fab-nao-identificado"
+                 class="accordion-content" style="display:none;">
+              <% Object.keys(gruposSemFab)
+                   .sort((x,y)=>x.localeCompare(y,'pt','base'))
+                   .forEach(extra1Key=>{
+                    const grupo = gruposSemFab[extra1Key];
+                    const sanitized = extra1Key.toLowerCase()
+                                          .replace(/\s+/g,'-')
+                                          .replace(/[^a-z0-9-]+/g,'');
+                    const gid = `prod-nao-identificado-${sanitized}`;
+              %>
+                <div class="group-container">
+                  <div class="accordion-header"
+                       onclick="toggleAccordion('<%= gid %>')">
+                    <div class="group-info">
+                      <span class="group-title"><%= extra1Key %></span>
+                      <span class="group-count">(<%= grupo.length %> var.)</span>
+                    </div>
+                    <div class="group-actions">
+                      <!-- checkbox do grupo -->
+                      <input type="checkbox"
+                             class="group-checkbox"
+                             onclick="toggleGroupChildren('<%= gid %>', <%= grupo.length %>, event)"
+                             value="<%= gid %>"
+                             data-product-name="<%= extra1Key %>"
+                             data-variations-count="<%= grupo.length %>">
+                    
+                      <!-- input visível para editar a posição -->
+                      <input type="text"
+                             class="group-order-input"
+                             name="quadroId_<%= gid %>"
+                             data-group-id="<%= gid %>"
+                             onchange="manualChangeOrder(event)">
+                    
+                      <!-- INPUT HIDDEN que enviará a largura (1-simples | 2-duplo | 3-triplo) -->
+                      <input type="hidden"
+                             name="largura_<%= gid %>"
+                             value="<%= grupo.length > 6 ? 2 : 1 %>">
+                    
+                      <% if (grupo.length > 6) { %>
+                        <!-- opção de tornar triplo -->
+                        <label class="triplo-label" style="margin-left:6px;font-size:11px;">
+                          <input type="checkbox"
+                                 class="triplo-checkbox"
+                                 onchange="toggleTriplo('<%= gid %>', this)">
+                          Triplo
+                        </label>
+                      <% } %>
+                    </div>
+                    
+                  </div>
+                  <div id="<%= gid %>" class="accordion-content" style="display:none;">
+                    <% grupo.forEach(varProd=>{
+                         const val = `${varProd.id}|${gid}`;
+                    %>
+                      <label class="checkbox-group">
+                        <input type="checkbox"
+                               class="product-checkbox"
+                               name="produtosSelecionados[]"
+                               value="<%= val %>"
+                               onchange="updateSelection()">
+                        <%= varProd.codigo %> – <%= varProd.nome %> (Est: <%= varProd.estoqueAtual %>)
+                      </label><br/>
+                    <% }) %>
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+          </div>
+        <% } %>
+
+        <br/>
+        <button type="submit">Salvar Encarte</button>
+      </form>
+    </div>
+
+    <div class="cadastro-preview">
+      <h2>Quadros Selecionados (<span id="quadrosCount">0</span>)</h2>
+      <table class="selected-groups-table">
+        <thead>
+          <tr>
+            <th style="width:80px;">Posições</th>
+            <th>Nome do Produto</th>
+          </tr>
+        </thead>
+        <tbody id="selectedGroupsTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

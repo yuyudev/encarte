@@ -1,0 +1,75 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+}
+
+header {
+    background-color: #ddd;
+    padding: 10px;
+}
+
+.back-button {
+    display: inline-block;
+    padding: 8px 12px;
+    background-color: #007bff;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+h1 {
+    text-align: center;
+    margin: 20px 0;
+}
+
+.upload-container {
+    width: 400px;
+    margin: 0 auto;
+    background: #f9f9f9;
+    border-radius: 8px;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    text-align: center;
+}
+
+.file-label {
+    display: inline-block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+#logoFile {
+    display: block;
+    margin: 10px auto 20px auto;
+}
+
+.img-preview-container {
+    width: 100%;
+    height: auto;
+    margin: 10px 0;
+    text-align: center;
+}
+
+#preview-img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.submit-btn {
+    display: inline-block;
+    background-color: #28a745;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.submit-btn:hover {
+    background-color: #218838;
+}

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8">
+    <title>Listar Encartes</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/encartes.css">
+  </head>
+  <body>
+    <!-- Cabeçalho com botão voltar -->
+    <header>
+      <a href="/dashboard" class="back-button">&larr; Voltar</a>
+    </header>
+    
+    <h1>Listar Encartes</h1>
+    
+    <table class="encartes-table">
+      <thead>
+        <tr>
+          <th>Título</th>
+          <th>Texto Legal</th>
+          <th>Texto Legal Capa</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% encartes.forEach(function(encarte) { %>
+          <tr>
+            <td><%= encarte.titulo %></td>
+            <td><%= encarte.textoLegal %></td>
+            <td><%= encarte.textoLegalCapa %></td>
+            <td>
+              <a href="/encartes/editar/<%= encarte.id %>" class="edit-btn">Editar</a>
+              <a href="/encartes/<%= encarte.id %>/preview" class="view-btn" target="_blank">Ver</a>
+              <form method="POST" action="/encartes/excluir/<%= encarte.id %>" style="display:inline;">
+                <button type="submit" class="delete-btn" onclick="return confirm('Tem certeza que deseja excluir este encarte?');">
+                  Excluir
+                </button>
+              </form>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </body>
+</html>

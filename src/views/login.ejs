@@ -1,0 +1,23 @@
+<!-- views/login.ejs -->
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/login.css">
+  </head>
+  <body>
+    <div class="login-container">
+      <h1>Login</h1>
+      <% if (typeof error !== 'undefined' && error) { %>
+        <p style="color: red;"><%= error %></p>
+      <% } %>
+      <form method="post">
+        <input type="text" name="email" placeholder="Email" required>
+        <input type="password" name="senha" placeholder="Senha" required>
+        <button type="submit">Entrar</button>
+      </form>
+    </div>
+  </body>
+</html>

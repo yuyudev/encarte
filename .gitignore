@@ -1,0 +1,13 @@
+# Ignorar arquivos de imagem
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.svg
+*.ico
+
+# Ignorar arquivos PDF
+*.pdf

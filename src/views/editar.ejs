@@ -1,0 +1,561 @@
+<%
+  const spids = Array.isArray(selectedProductIds) ? selectedProductIds : [];
+  const qMap  = quadroInfoMap || {};
+%>
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Editar Encarte</title>
+  <link rel="stylesheet" href="/css/styles.css"/>
+  <link rel="stylesheet" href="/css/cadastro.css"/>
+  <script>
+    /* ===========================================================
+       ESTADO & CONSTANTES
+       ===========================================================*/
+    let selectedItems = [];
+    const selectedProductIds = <%- JSON.stringify(spids) %>;
+    const quadroInfoMap      = <%- JSON.stringify(qMap)  %>;
+
+    let selectionOrderCounter  = 0;
+    let newSelectionTimestamps = {};
+
+    const CAPA_LIMIT    = 9;
+    const INTERNA_START = 10;
+
+    const widthOf = it => it.triplo ? 3 : (it.isDuplo ? 2 : 1);
+
+    /* ===========================================================
+       TOGGLE “EDITAR CAPA”
+       ===========================================================*/
+    function onToggleCapa() {
+      updateSelection();
+    }
+
+    /* ===========================================================
+       TRIPLO – LIGA/DESLIGA
+       ===========================================================*/
+    function toggleTriplo(gid, chk) {
+      const master = document.querySelector(`.group-checkbox[value="${gid}"]`);
+      const hidden = document.querySelector(`input[name="largura_${gid}"]`);
+      if (!master?.checked) {
+        alert('Selecione o grupo antes de marcar “Triplo”.');
+        chk.checked = false;
+        return;
+      }
+      master.dataset.triplo = chk.checked ? '1' : '';
+      hidden.value          = chk.checked ? '3' : '2';
+      updateSelection();
+    }
+
+    /* ===========================================================
+       LOOP PRINCIPAL
+       ===========================================================*/
+    function updateSelection() {
+      buildSelectedItems();
+      assignPositions();
+      if (!validateLayout()) return;
+      renderInputs();
+      renderSelectedTable();
+      updateQuadrosCount();
+    }
+
+    /* -----------------------------------------------------------
+       1) buildSelectedItems
+       -----------------------------------------------------------*/
+    function buildSelectedItems() {
+      const temp = [];
+      document.querySelectorAll('.group-checkbox').forEach(chk => {
+        if (!chk.checked) return;
+
+        const gid   = chk.value;
+        const name  = chk.dataset.productName || 'Produto sem nome';
+        const vCnt  = +chk.dataset.variationsCount;
+        const info  = quadroInfoMap[gid] || {};
+
+        // Detecta atributos
+        const triploAttr  = info.largura === 3  || chk.dataset.triplo === '1';
+        const isDuploAttr = info.largura === 2  || (!triploAttr && vCnt > 6);
+
+        // Timestamp: mantém do BD ou incrementa para novos
+        let timestamp;
+        if (info.timestamp) {
+          timestamp = info.timestamp;
+        } else {
+          if (!newSelectionTimestamps[gid]) {
+            newSelectionTimestamps[gid] = ++selectionOrderCounter;
+          }
+          timestamp = newSelectionTimestamps[gid];
+        }
+
+        // Ordem salva no BD (quadroId)
+        const dbOrd = Number(info.order) || 0;
+
+        // Calcula o startPos real subtraindo o “offset”:
+        // duplo  →	offset = 1  (por isso start = dbOrd - 1)
+        // triplo →	offset = 2  (por isso start = dbOrd - 2)
+        let startPos = dbOrd;
+        if (triploAttr) {
+          startPos = dbOrd - 2;
+        } else if (isDuploAttr) {
+          startPos = dbOrd - 1;
+        }
+
+        temp.push({
+          groupId        : gid,
+          productName    : name,
+          variationsCount: vCnt,
+          triplo         : triploAttr,
+          isDuplo        : isDuploAttr,
+          startPos,           // agora já corrigido
+          timestamp
+        });
+      });
+      selectedItems = temp;
+    }
+
+    /* -----------------------------------------------------------
+       2) assignPositions
+       -----------------------------------------------------------*/
+    function assignPositions() {
+      const capaLigada = document.getElementById('switchCapa').checked;
+      const preserved = [], toAssign = [];
+      selectedItems.forEach(it => (it.startPos>0 ? preserved : toAssign).push(it));
+
+      preserved.sort((a,b)=>a.timestamp-b.timestamp);
+      toAssign .sort((a,b)=>a.timestamp-b.timestamp);
+
+      if (capaLigada) {
+        const occupied = new Set();
+        preserved.forEach(it=>{
+          if (it.startPos<=CAPA_LIMIT) {
+            for (let i=0;i<widthOf(it);i++) occupied.add(it.startPos+i);
+          }
+        });
+        const free = [];
+        for (let i=1; i<=CAPA_LIMIT; i++) if (!occupied.has(i)) free.push(i);
+
+        toAssign.forEach(it=>{
+          const w = widthOf(it);
+          if (w===3) {
+            const idx = free.findIndex((v,j)=>free[j+1]===v+1 && free[j+2]===v+2);
+            it.startPos = idx>-1? free[idx] : free.shift() || 1;
+            free.splice(idx>-1? idx:0, 3);
+          } else if (w===2) {
+            const idx = free.findIndex((v,j)=>free[j+1]===v+1);
+            it.startPos = idx>-1? free[idx] : free.shift() || 1;
+            free.splice(idx>-1? idx:0, 2);
+          } else {
+            it.startPos = free.shift() || 1;
+          }
+        });
+      } else {
+        let next = INTERNA_START;
+        preserved.forEach(it=>{
+          if (it.startPos>=INTERNA_START) {
+            const end = it.startPos + widthOf(it) -1;
+            if (end>=next) next = end+1;
+          }
+        });
+        toAssign.forEach(it=>{
+          it.startPos = next;
+          next += widthOf(it);
+        });
+      }
+
+      selectedItems = preserved.concat(toAssign)
+                                .sort((a,b)=>a.timestamp-b.timestamp);
+    }
+
+    /* -----------------------------------------------------------
+       3) validateLayout
+       -----------------------------------------------------------*/
+    function validateLayout() {
+      const isCapa = document.getElementById('switchCapa').checked;
+      if (isCapa && selectedItems.some(it=>{
+            if (it.startPos>CAPA_LIMIT) return false;
+            return it.startPos + widthOf(it) -1 > CAPA_LIMIT;
+          })) {
+        alert('Capa só possui 9 quadros.');
+        removeLast(); return false;
+      }
+      // regras de coluna
+      for (const it of selectedItems) {
+        const col = ((it.startPos-1)%3)+1;
+        if (it.triplo && col!==1) {
+          alert('Triplo deve iniciar na coluna 1.');
+          removeGroup(it.groupId); return false;
+        }
+        if (it.isDuplo && !it.triplo && col===3) {
+          alert('Duplo não pode iniciar na coluna 3.');
+          removeGroup(it.groupId); return false;
+        }
+      }
+      // não exceder 3 colunas por linha
+      const map = {};
+      for (const it of selectedItems) {
+        const line = Math.ceil(it.startPos/3);
+        map[line] = (map[line]||0) + widthOf(it);
+        if (map[line]>3) {
+          alert('Linha com mais de 3 colunas.');
+          removeLast(); return false;
+        }
+      }
+      return true;
+    }
+
+    /* -----------------------------------------------------------
+       4) renderInputs
+       -----------------------------------------------------------*/
+    function renderInputs() {
+      document.querySelectorAll('.group-order-input').forEach(i=>{ i.value=''; i.title=''; });
+      selectedItems.forEach(it=>{
+        const inp = document.querySelector(`.group-order-input[name="quadroId_${it.groupId}"]`);
+        if (!inp) return;
+        if (it.triplo) {
+          inp.value = it.startPos + 2;
+          inp.title = `${it.startPos},${it.startPos+1},${it.startPos+2}`;
+        } else if (it.isDuplo) {
+          inp.value = it.startPos + 1;
+          inp.title = `${it.startPos},${it.startPos+1}`;
+        } else {
+          inp.value = it.startPos;
+        }
+      });
+    }
+
+    /* -----------------------------------------------------------
+       5) renderSelectedTable
+       -----------------------------------------------------------*/
+    function renderSelectedTable() {
+      const tb = document.getElementById('selectedGroupsTableBody');
+      tb.innerHTML = '';
+      selectedItems.sort((a,b)=>a.startPos-b.startPos).forEach(it=>{
+        const tr = document.createElement('tr');
+        const td1 = document.createElement('td'); td1.style.width='80px';
+        td1.textContent = it.triplo
+          ? `${it.startPos},${it.startPos+1},${it.startPos+2}`
+          : it.isDuplo
+            ? `${it.startPos},${it.startPos+1}`
+            : it.startPos;
+        tr.appendChild(td1);
+
+        const td2 = document.createElement('td');
+        const x = document.createElement('span');
+        x.textContent='X'; x.style.color='red'; x.style.cursor='pointer'; x.style.marginRight='8px';
+        x.onclick = ()=> removeItem(it.groupId);
+        td2.appendChild(x);
+        const nm = document.createElement('span');
+        nm.textContent = it.productName; nm.style.textDecoration='underline'; nm.style.cursor='pointer';
+        nm.onclick = ()=> toggleVariationsRow(it.groupId);
+        td2.appendChild(nm);
+        tr.appendChild(td2);
+        tb.appendChild(tr);
+
+        // variações
+        const trv = document.createElement('tr'); trv.id='vars-'+it.groupId; trv.style.display='none';
+        const tdv = document.createElement('td'); tdv.colSpan=2;
+        const cont = document.getElementById(it.groupId);
+        if (cont) {
+          const sels = cont.querySelectorAll('.product-checkbox:checked');
+          if (sels.length) {
+            const ul = document.createElement('ul');
+            sels.forEach(ch=>{
+              const li = document.createElement('li');
+              const xv = document.createElement('span');
+              xv.textContent='X'; xv.style.color='red'; xv.style.cursor='pointer'; xv.style.marginRight='5px';
+              xv.onclick=()=>{ ch.checked=false; updateSelection(); };
+              li.appendChild(xv);
+              li.appendChild(document.createTextNode(ch.parentElement.textContent.trim()));
+              ul.appendChild(li);
+            });
+            tdv.appendChild(ul);
+          } else tdv.textContent='Nenhuma variação selecionada.';
+        } else tdv.textContent='Nenhuma variação selecionada.';
+        trv.appendChild(tdv); tb.appendChild(trv);
+      });
+    }
+
+    /* -----------------------------------------------------------
+       6) updateQuadrosCount
+       -----------------------------------------------------------*/
+    function updateQuadrosCount() {
+      const tot = selectedItems.reduce((s,it)=>s+widthOf(it),0);
+      document.getElementById('quadrosCount').textContent = tot;
+    }
+
+    /* -----------------------------------------------------------
+       UTILS: remove, toggle vars
+       -----------------------------------------------------------*/
+    function removeGroup(gid){
+      const chk = document.querySelector(`.group-checkbox[value="${gid}"]`);
+      if (chk) chk.checked = false;
+      updateSelection();
+    }
+    function removeLast(){
+      const it = selectedItems.pop();
+      if (it) removeGroup(it.groupId);
+    }
+    function removeItem(gid){
+      removeGroup(gid);
+    }
+    function toggleVariationsRow(gid){
+      const r = document.getElementById('vars-'+gid);
+      if (r) r.style.display = r.style.display==='none'?'':'none';
+    }
+
+    /* -----------------------------------------------------------
+       MANUAL CHANGE (edição)
+       -----------------------------------------------------------*/
+    function manualChangeOrderEdit(evt){
+      const inp = evt.target;
+      const gid = inp.getAttribute('data-group-id');
+      const item = selectedItems.find(it=>it.groupId===gid);
+      if (!item) return;
+      const val = parseInt(inp.value,10);
+      if (isNaN(val)){ renderInputs(); return; }
+      const offset = widthOf(item)-1;
+      const desired = val - offset;
+      if (desired<1){ renderInputs(); return; }
+
+      const coll = selectedItems.find(it=>{
+        if (it.groupId===gid) return false;
+        const ra=[desired, desired+offset];
+        const rb=[it.startPos, it.startPos+widthOf(it)-1];
+        return !(ra[1]<rb[0]||rb[1]<ra[0]);
+      });
+      if (coll){ alert('Posição conflita com outro quadro.'); renderInputs(); return; }
+
+      item.startPos = desired;
+      updateSelection();
+    }
+
+    /* -----------------------------------------------------------
+       MARCAR TODOS, ACORDEÃO
+       -----------------------------------------------------------*/
+    function marcarTodosProdutos(fid,e){
+      document.querySelectorAll(`#fab-${fid} .group-checkbox,#fab-${fid} .product-checkbox`)
+        .forEach(cb=>cb.checked=e.target.checked);
+      updateSelection();
+    }
+    function toggleGroupChildren(gid,_,e){
+      document.querySelectorAll(`#${gid} .product-checkbox`)
+        .forEach(c=>c.checked=e.target.checked);
+      updateSelection();
+    }
+    function toggleAccordion(id){
+      const el = document.getElementById(id);
+      if (el) el.style.display = el.style.display==='none'?'block':'none';
+    }
+
+    /* ===========================================================
+       ONLOAD
+       ===========================================================*/
+    window.onload = () => {
+      document.querySelectorAll('.product-checkbox').forEach(cb=>{
+        if (selectedProductIds.includes(cb.value.split('|')[0])) cb.checked = true;
+      });
+      const sw = document.getElementById('switchCapa');
+      if (sw) sw.addEventListener('change', onToggleCapa);
+      updateSelection();
+    };
+  </script>
+</head>
+<body>
+  <header><a href="/dashboard" class="back-button">&larr; Voltar</a></header>
+  <div class="switch-capa-wrapper" style="margin:18px 0;">
+    <label class="switch-capa-label" style="font-weight:600;">
+      <input type="checkbox" id="switchCapa">
+      <span class="slider-capa"></span>
+      Editar capa (quadros 1 – 9)
+    </label>
+  </div>
+
+  <h1>Editar Encarte</h1>
+  <form method="POST" action="/encartes/editar/<%= encarte.id %>">
+    <!-- campos título, textos… -->
+    <label>Título do Encarte:
+      <input name="titulo" value="<%= encarte.titulo %>" required/>
+    </label><br/><br/>
+    <label>Texto Legal:
+      <textarea name="textoLegal" required><%= encarte.textoLegal %></textarea>
+    </label><br/><br/>
+    <label>Texto Legal Capa:
+      <textarea name="textoLegalCapa" required><%= encarte.textoLegalCapa %></textarea>
+    </label><br/><br/>
+
+    <p>Selecione os produtos:</p>
+    <div class="cadastro-container">
+      <div class="cadastro-form">
+        <% Object.keys(fabricantesMap).sort().forEach(fabKey=>{
+             const fab = fabricantesMap[fabKey];
+        %>
+          <div class="accordion">
+            <div class="accordion-header"
+                 onclick="toggleAccordion('fab-<%= fab.fabricante.codigoFabricante %>')">
+              <span class="manufacturer-title">
+                [Fabricante] <%= fab.fabricante.nomeFabricante %>
+              </span>
+              <input type="checkbox"
+                     onclick="marcarTodosProdutos('<%= fab.fabricante.codigoFabricante %>',event)"/>
+            </div>
+            <div id="fab-<%= fab.fabricante.codigoFabricante %>"
+                 class="accordion-content" style="display:none;">
+              <% Object.keys(fab.produtos).sort().forEach(extra1Key=>{
+                   const grupo = fab.produtos[extra1Key];
+                   const sanitized = extra1Key.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]+/g,'');
+                   const accordionProdId = `prod-${fab.fabricante.codigoFabricante}-${sanitized}`;
+              %>
+                <div class="group-container">
+                  <div class="accordion-header"
+                       onclick="toggleAccordion('<%= accordionProdId %>')">
+                    <div class="group-info">
+                      <span class="group-title"><%= extra1Key %></span>
+                      <span class="group-count">(<%= grupo.length %> var.)</span>
+                    </div>
+                    <div class="group-actions">
+                      <!-- master checkbox -->
+                      <input type="checkbox"
+                             class="group-checkbox"
+                             onclick="toggleGroupChildren('<%= accordionProdId %>', <%= grupo.length %>, event)"
+                             name="grupoSelecionado[]"
+                             value="<%= accordionProdId %>"
+                             data-product-name="<%= extra1Key %>"
+                             data-variations-count="<%= grupo.length %>"
+                             data-triplo="<%= (qMap[accordionProdId]?.largura==3)?'1':'' %>"
+                             <%= grupo.some(p=>spids.includes(String(p.id)))?'checked':'' %> >
+
+                      <!-- ordem -->
+                      <input type="text"
+                             class="group-order-input"
+                             name="quadroId_<%= accordionProdId %>"
+                             data-group-id="<%= accordionProdId %>"
+                             value="<%= qMap[accordionProdId]?.order||'' %>"
+                             onchange="manualChangeOrderEdit(event)"/>
+
+                      <!-- largura oculta -->
+                      <input type="hidden"
+                             name="largura_<%= accordionProdId %>"
+                             value="<%= qMap[accordionProdId]?.largura||(grupo.length>6?2:1) %>">
+
+                      <!-- triplo checkbox -->
+                      <% if (grupo.length>6) { %>
+                        <label class="triplo-label" style="margin-left:6px;font-size:11px;">
+                          <input type="checkbox"
+                                 class="triplo-checkbox"
+                                 onchange="toggleTriplo('<%= accordionProdId %>',this)"
+                                 <%= (qMap[accordionProdId]?.largura==3)?'checked':'' %> >
+                          Triplo
+                        </label>
+                      <% } %>
+                    </div>
+                  </div>
+                  <div id="<%= accordionProdId %>"
+                       class="accordion-content" style="display:none;">
+                    <% grupo.forEach(varProd=>{
+                         const pre = spids.includes(String(varProd.id));
+                    %>
+                      <label class="checkbox-group">
+                        <input type="checkbox"
+                               class="product-checkbox"
+                               name="produtosSelecionados[]"
+                               value="<%= varProd.id %>|<%= accordionProdId %>"
+                               onchange="updateSelection()"
+                               <%= pre?'checked':'' %> />
+                        <%= varProd.codigo %> – <%= varProd.nome %> (Est: <%= varProd.estoqueAtual %>)
+                      </label><br/>
+                    <% }) %>
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+          </div>
+        <% }) %>
+
+        <!-- Fabricante não identificado (mesma lógica acima) -->
+        <% if (Object.keys(gruposSemFab).length) { %>
+          <div class="accordion">
+            <div class="accordion-header"
+                 onclick="toggleAccordion('fab-nao-identificado')">
+              <span class="manufacturer-title">[Fabricante Não Identificado]</span>
+              <input type="checkbox" onclick="marcarTodosProdutos('nao-identificado',event)"/>
+            </div>
+            <div id="fab-nao-identificado" class="accordion-content" style="display:none;">
+              <% Object.keys(gruposSemFab).forEach(extra1Key=>{
+                   const grupo = gruposSemFab[extra1Key];
+                   const sanitized = extra1Key.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]+/g,'');
+                   const accordionProdId = `prod-nao-identificado-${sanitized}`;
+                   const info = qMap[accordionProdId]||{};
+              %>
+                <div class="group-container">
+                  <div class="accordion-header"
+                       onclick="toggleAccordion('<%= accordionProdId %>')">
+                    <div class="group-info">
+                      <span class="group-title"><%= extra1Key %></span>
+                      <span class="group-count">(<%= grupo.length %> var.)</span>
+                    </div>
+                    <div class="group-actions">
+                      <input type="checkbox"
+                             class="group-checkbox"
+                             onclick="toggleGroupChildren('<%= accordionProdId %>', <%= grupo.length %>, event)"
+                             name="grupoSelecionado[]"
+                             value="<%= accordionProdId %>"
+                             data-product-name="<%= extra1Key %>"
+                             data-variations-count="<%= grupo.length %>"
+                             data-triplo="<%= info.largura==3?'1':'' %>"
+                             <%= grupo.some(p=>spids.includes(String(p.id)))?'checked':'' %> />
+
+                      <input type="text"
+                             class="group-order-input"
+                             name="quadroId_<%= accordionProdId %>"
+                             data-group-id="<%= accordionProdId %>"
+                             value="<%= info.order||'' %>"
+                             onchange="manualChangeOrderEdit(event)"/>
+
+                      <input type="hidden"
+                             name="largura_<%= accordionProdId %>"
+                             value="<%= info.largura||(grupo.length>6?2:1) %>"/>
+                    </div>
+                  </div>
+                  <div id="<%= accordionProdId %>"
+                       class="accordion-content" style="display:none;">
+                    <% grupo.forEach(varProd=>{
+                         const pre = spids.includes(String(varProd.id));
+                    %>
+                      <label class="checkbox-group">
+                        <input type="checkbox"
+                               class="product-checkbox"
+                               name="produtosSelecionados[]"
+                               value="<%= varProd.id %>|<%= accordionProdId %>"
+                               onchange="updateSelection()"
+                               <%= pre?'checked':'' %> />
+                        <%= varProd.codigo %> – <%= varProd.nome %> (Est: <%= varProd.estoqueAtual %>)
+                      </label><br/>
+                    <% }) %>
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+          </div>
+        <% } %>
+      </div>
+
+      <div class="cadastro-preview">
+        <h2>Quadros Selecionados (<span id="quadrosCount">0</span>)</h2>
+        <table class="selected-groups-table">
+          <thead>
+            <tr>
+              <th style="width:80px;">Quadro(s)</th>
+              <th>Nome do Produto</th>
+            </tr>
+          </thead>
+          <tbody id="selectedGroupsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <br/>
+    <button type="submit">Salvar Alterações</button>
+  </form>
+</body>
+</html>
