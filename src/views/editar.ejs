@@ -14,6 +14,9 @@
       ESTADO & CONSTANTES
       ===========================================================*/
     let selectedItems = [];
+    let previousCapaState = false; 
+    let previousGroupIds  = [];   
+
     const selectedProductIds = <%- JSON.stringify(spids) %>;   // IDs de variações já associadas
     const quadroInfoMap      = <%- JSON.stringify(qMap)  %>;   // quadros gravados no BD
 
@@ -53,12 +56,14 @@
       LOOP PRINCIPAL
       ===========================================================*/
     function updateSelection() {
-      buildSelectedItems();      // 1) reconstrói lista
-      assignPositions();         // 2) atribui quadros
-      if (!validateLayout()) return;   // 3) checa regras
-      renderInputs();            // 4) preenche inputs hidden + visíveis
-      renderSelectedTable();     // 5) tabela preview
-      updateQuadrosCount();      // 6) contador
+      buildSelectedItems();     
+      assignPositions();       
+      if (!validateLayout()) return;  
+      renderInputs();   
+      renderSelectedTable(); 
+      updateQuadrosCount();  
+      previousGroupIds  = selectedItems.map(it => it.groupId);
+      previousCapaState = document.getElementById('switchCapa').checked;    
     }
 
     /* -----------------------------------------------------------
@@ -69,42 +74,54 @@
       document.querySelectorAll('.group-checkbox').forEach(chk => {
         if (!chk.checked) return;
 
-        const gid   = chk.value;
-        const name  = chk.dataset.productName || 'Produto sem nome';
-        const info  = quadroInfoMap[gid] || {};
+        const gid  = chk.value;
+        const name = chk.dataset.productName || 'Produto sem nome';
+        const info = quadroInfoMap[gid] || {};
 
-        // conta quantas variações foram marcadas pelo usuário
+        // conta quantas variações foram marcadas
         const container = document.getElementById(gid);
         const vCnt = container
           ? container.querySelectorAll('.product-checkbox:checked').length
           : +chk.dataset.variationsCount;
 
-        /* atributos triplo / duplo */
-        // triplo se vier do BD (info.largura === 3) ou se o usuário marcou o checkbox
-        const triploAttr  = (info.largura === 3) || (chk.dataset.triplo === '1');
-        // duplo apenas se não for triplo e vCnt > 6
+        /* flags de triplo/duplo dinâmicas */
+        const triploAttr = (info.largura === 3) || (chk.dataset.triplo === '1');
         const isDuploAttr = !triploAttr && vCnt > 6;
 
-        /* timestamp e startPos continuam iguais */
-        let timestamp;
-        if (info.timestamp) {
-          timestamp = info.timestamp;
-        } else {
-          if (!newSelectionTimestamps[gid]) {
-            newSelectionTimestamps[gid] = ++selectionOrderCounter;
-          }
-          timestamp = newSelectionTimestamps[gid];
-        }
+        // procura se o grupo já estava em selectedItems
+        const existing = selectedItems.find(x => x.groupId === gid);
 
-        const dbOrd = Number(info.order) || 0;
-        let startPos = dbOrd;
-        if (triploAttr)      startPos = dbOrd - 2;
-        else if (isDuploAttr) startPos = dbOrd - 1;
+        let timestamp, startPos;
+        if (existing) {
+          // reaproveita timestamp
+          timestamp = existing.timestamp;
+          // se o tipo de quadro mudou, zera posição para recalcular
+          if (existing.triplo !== triploAttr || existing.isDuplo !== isDuploAttr) {
+            startPos = 0;
+          } else {
+            startPos = existing.startPos;
+          }
+        } else {
+          // item novo: define timestamp (do BD ou gerado) e startPos inicial
+          if (info.timestamp) {
+            timestamp = info.timestamp;
+          } else {
+            if (!newSelectionTimestamps[gid]) {
+              newSelectionTimestamps[gid] = ++selectionOrderCounter;
+            }
+            timestamp = newSelectionTimestamps[gid];
+          }
+          const dbOrd = Number(info.order) || 0;
+          startPos = dbOrd;
+          if (triploAttr)      startPos = dbOrd - 2;
+          else if (isDuploAttr) startPos = dbOrd - 1;
+          if (dbOrd === 0)     startPos = 0; // garante que itens novos tenham 0
+        }
 
         temp.push({
           groupId        : gid,
           productName    : name,
-          variationsCount: vCnt,    // guarda a contagem dinâmica
+          variationsCount: vCnt,
           triplo         : triploAttr,
           isDuplo        : isDuploAttr,
           startPos,
@@ -120,72 +137,82 @@
     function assignPositions() {
       const capaLigada = document.getElementById('switchCapa').checked;
 
-      /* ----------- ZERA apenas a faixa que está em edição ----------*/
+      // Verifica se houve alternância de capa e se houve exclusão
+      const currentIds = selectedItems.map(it => it.groupId);
+      const isToggle   = capaLigada !== previousCapaState;
+      const isDeletion = previousGroupIds.length > 0 &&
+                        previousGroupIds.some(id => !currentIds.includes(id));
+
+      // Quando há exclusão (e não é alternância), reorganiza a capa e as internas para fechar buracos
+      if (isDeletion && !isToggle) {
+        reorganizarInternas();
+        reorganizarCapa();
+      }
+
+      // Calcula o maior índice ocupado na seção em edição
+      let maxEnd = capaLigada ? 1 : INTERNA_START;
       selectedItems.forEach(it => {
+        const w = widthOf(it);
         if (capaLigada) {
-          if (it.startPos <= CAPA_LIMIT)      it.startPos = 0;   // capa
+          // capa: posições de 1 a 9
+          if (it.startPos > 0 && it.startPos <= CAPA_LIMIT) {
+            const end = it.startPos + w;
+            if (end > maxEnd) maxEnd = end;
+          }
         } else {
-          if (it.startPos >= INTERNA_START)   it.startPos = 0;   // internas
+          // internas: posições a partir de 10
+          if (it.startPos >= INTERNA_START) {
+            const end = it.startPos + w;
+            if (end > maxEnd) maxEnd = end;
+          }
         }
       });
 
-      /* separa preservados/novos */
-      const preserved = [], toAssign = [];
-      selectedItems.forEach(it => (it.startPos>0 ? preserved : toAssign).push(it));
-
-      preserved.sort((a,b)=>a.timestamp-b.timestamp);
-      toAssign .sort((a,b)=>a.timestamp-b.timestamp);
-
+      // Se estiver editando capa, cria um set com as colunas já ocupadas
+      let occupied = null;
       if (capaLigada) {
-        /* ---------- CAPA (1‑9) ----------*/
-        const occupied = new Set();
-        preserved.forEach(it=>{
-          if (it.startPos<=CAPA_LIMIT){
-            for (let i=0;i<widthOf(it);i++) occupied.add(it.startPos+i);
+        occupied = new Set();
+        selectedItems.forEach(it => {
+          if (it.startPos > 0 && it.startPos <= CAPA_LIMIT) {
+            for (let i = 0; i < widthOf(it); i++) {
+              const pos = it.startPos + i;
+              if (pos <= CAPA_LIMIT) occupied.add(pos);
+            }
           }
-        });
-        const free=[];
-        for(let i=1;i<=CAPA_LIMIT;i++) if(!occupied.has(i)) free.push(i);
-
-        toAssign.forEach(it=>{
-          const w = widthOf(it);
-          if (w===3){
-            const idx = free.findIndex((v,j)=>free[j+1]===v+1 && free[j+2]===v+2);
-            it.startPos = idx>-1 ? free[idx] : free[0]||1;
-            free.splice(idx>-1?idx:0,3);
-          } else if (w===2){
-            const idx = free.findIndex((v,j)=>free[j+1]===v+1);
-            it.startPos = idx>-1 ? free[idx] : free[0]||1;
-            free.splice(idx>-1?idx:0,2);
-          } else {
-            it.startPos = free.shift()||1;
-          }
-        });
-
-      } else {
-        /* ---------- INTERNAS (>=10) ----------*/
-        let next = INTERNA_START;
-        preserved.forEach(it=>{
-          if (it.startPos>=INTERNA_START){
-            const end = it.startPos + widthOf(it) - 1;
-            if (end>=next) next = end + 1;
-          }
-        });
-        toAssign.forEach(it=>{
-          it.startPos = next;
-          next += widthOf(it);
         });
       }
 
-      selectedItems = preserved.concat(toAssign)
-                              .sort((a,b)=>a.timestamp-b.timestamp);
+      // Filtra os itens considerados "novos" (startPos <= 0) e ordena-os por timestamp
+      const novos = selectedItems
+        .filter(it => it.startPos <= 0)
+        .sort((a,b) => a.timestamp - b.timestamp);
 
-      /* reorganiza a faixa oposta para fechar buracos */
-      if (capaLigada) {
-        reorganizarInternas();
-      } else {
-        reorganizarCapa();
-      }
+      // Atribui posições aos itens novos, sempre após o maior índice (maxEnd).
+      novos.forEach(it => {
+        const w = widthOf(it);
+        let newStart = maxEnd;
+
+        if (capaLigada) {
+          // Se não couber no final da capa, procura o primeiro intervalo contíguo livre
+          if (newStart + w - 1 > CAPA_LIMIT) {
+            outer: for (let i = 1; i + w - 1 <= CAPA_LIMIT; i++) {
+              let ok = true;
+              for (let j = 0; j < w; j++) {
+                if (occupied.has(i + j)) { ok = false; break; }
+              }
+              if (ok) {
+                newStart = i;
+                break outer;
+              }
+            }
+          }
+          // Marca as colunas usadas
+          for (let j = 0; j < w; j++) occupied.add(newStart + j);
+        }
+
+        it.startPos = newStart;
+        maxEnd = newStart + w;
+      });
     }
 
     /* -----------------------------------------------------------
@@ -465,9 +492,14 @@
     <p>Selecione os produtos:</p>
     <div class="cadastro-container">
       <div class="cadastro-form">
-        <% Object.keys(fabricantesMap).sort().forEach(fabKey=>{
-             const fab = fabricantesMap[fabKey];
-        %>
+        <% Object.keys(fabricantesMap)
+            .sort((a,b) =>
+              fabricantesMap[a].fabricante.nomeFabricante
+                .localeCompare(fabricantesMap[b].fabricante.nomeFabricante,'pt','base')
+            )
+            .forEach(fabKey => {
+              const fab = fabricantesMap[fabKey];
+        %>  
           <div class="accordion">
             <div class="accordion-header"
                  onclick="toggleAccordion('fab-<%= fab.fabricante.codigoFabricante %>')">
@@ -479,7 +511,9 @@
             </div>
             <div id="fab-<%= fab.fabricante.codigoFabricante %>"
                  class="accordion-content" style="display:none;">
-              <% Object.keys(fab.produtos).sort().forEach(extra1Key=>{
+              <% Object.keys(fab.produtos)
+                  .sort((x,y) => x.localeCompare(y,'pt','base'))
+                  .forEach(extra1Key => {
                    const grupo = fab.produtos[extra1Key];
                    const sanitized = extra1Key.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]+/g,'');
                    const accordionProdId = `prod-${fab.fabricante.codigoFabricante}-${sanitized}`;
