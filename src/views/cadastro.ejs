@@ -89,11 +89,13 @@
 
       selectedItems.forEach(it => {
         if (isCapa) {
-          if (it.startPos <= CAPA_LIMIT)      it.startPos = 0;   // capa
+          if (it.startPos <= CAPA_LIMIT && !it.manual) it.startPos = 0;
         } else {
-          if (it.startPos >= INTERNA_START)   it.startPos = 0;   // internas
+          if (it.startPos >= INTERNA_START && !it.manual) it.startPos = 0;
         }
       });
+
+
     
       const preserved = selectedItems.filter(it => it.startPos > 0);
       const toAssign  = selectedItems.filter(it => it.startPos === 0);
@@ -375,30 +377,84 @@
     function manualChangeOrder(evt){
       const inp   = evt.target;
       const gid   = inp.getAttribute('data-group-id');
-      const item  = selectedItems.find(it=>it.groupId===gid);
-      if(!item) return;
-    
-      const val   = parseInt(inp.value,10);
-      if(isNaN(val)){ alert('Valor inválido'); renderInputs(); return; }
-    
-      const offset = item.triplo ? 2 : (item.isDuplo ? 1 : 0);
-      const desiredStart = val - offset;
-      if(desiredStart<1){ alert('Posição inválida'); renderInputs(); return; }
-    
-      // verifica colisão
-      const collision = selectedItems.find(it=>{
-        if(it.groupId===gid) return false;
-        const rangeA=[desiredStart, desiredStart+offset];
-        const rangeB=[it.startPos, it.startPos+widthOf(it)-1];
-        return !(rangeA[1]<rangeB[0] || rangeB[1]<rangeA[0]);
-      });
-      if(collision){ alert('Essa posição conflita com outro quadro.'); renderInputs(); return; }
-    
+      const item  = selectedItems.find(it => it.groupId === gid);
+      if (!item) return;
+
+      const val   = parseInt(inp.value, 10);
+      if (isNaN(val)) { alert('Valor inválido'); renderInputs(); return; }
+
+      const wItem = widthOf(item);                // largura do item (1, 2 ou 3)
+      const desiredStart = val - (wItem - 1);     // posição inicial desejada
+
+      const isCapa = document.getElementById('switchCapa').checked;
+      // Validação de faixa: capa (1–9) ou internas (>=10)
+      if (isCapa) {
+        if (desiredStart < 1 || desiredStart + wItem - 1 > CAPA_LIMIT) {
+          alert('Posição inválida na capa');
+          renderInputs();
+          return;
+        }
+      } else {
+        if (desiredStart < INTERNA_START) {
+          alert('Posição inválida nas internas');
+          renderInputs();
+          return;
+        }
+      }
+
+      const currentStart = item.startPos;
+      if (!currentStart || currentStart <= 0) {
+        // se o item ainda não tem posição, não há como reordenar
+        renderInputs();
+        return;
+      }
+      if (desiredStart === currentStart) {
+        renderInputs();
+        return;
+      }
+
+      // desloca os outros itens conforme a direção do movimento
+      if (desiredStart < currentStart) {
+        // item sobe: empurra quadros da mesma faixa à direita
+        selectedItems.forEach(other => {
+          if (other.groupId === gid) return;
+          // só mexe em quadros da mesma seção (capa/internas)
+          if (isCapa && other.startPos >= INTERNA_START) return;
+          if (!isCapa && other.startPos <= CAPA_LIMIT) return;
+          const w = widthOf(other);
+          const otherStart = other.startPos;
+          const otherEnd   = otherStart + w - 1;
+          if (otherEnd >= desiredStart && otherStart < currentStart) {
+            other.startPos += wItem;
+            other.manual = true;        // marca para não ser zerado em assignPositions
+          }
+        });
+      } else {
+        // item desce: puxa quadros da mesma faixa à esquerda
+        const currentEnd = currentStart + wItem - 1;
+        selectedItems.forEach(other => {
+          if (other.groupId === gid) return;
+          if (isCapa && other.startPos >= INTERNA_START) return;
+          if (!isCapa && other.startPos <= CAPA_LIMIT) return;
+          const w = widthOf(other);
+          const otherStart = other.startPos;
+          if (otherStart > currentEnd && otherStart <= desiredStart + wItem - 1) {
+            other.startPos -= wItem;
+            other.manual = true;
+          }
+        });
+      }
+
+      // define a nova posição do item movido
       item.startPos = desiredStart;
-      // reordenamos outros mantendo gaps
-      selectedItems.sort((a,b)=>a.startPos-b.startPos);
+      item.manual = true;
+
+      // reordena a lista pelo novo startPos e atualiza a UI
+      selectedItems.sort((a,b) => a.startPos - b.startPos);
       updateSelection();
     }
+
+
     
     /* -----------------------------------------------------------
         CHECK/UNCHECK EM MASSA & ACORDEÃO

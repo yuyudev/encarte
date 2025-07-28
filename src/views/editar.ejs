@@ -409,29 +409,80 @@
         MANUAL CHANGE (edição)
       -----------------------------------------------------------*/
     function manualChangeOrderEdit(evt){
-      const inp = evt.target;
-      const gid = inp.getAttribute('data-group-id');
-      const item = selectedItems.find(it=>it.groupId===gid);
+      const inp   = evt.target;
+      const gid   = inp.getAttribute('data-group-id');
+      const item  = selectedItems.find(it => it.groupId === gid);
       if (!item) return;
 
-      const val = parseInt(inp.value,10);
-      if (isNaN(val)){ renderInputs(); return; }
+      const val   = parseInt(inp.value, 10);
+      if (isNaN(val)) { renderInputs(); return; }
 
-      const offset = widthOf(item)-1;
-      const desired = val - offset;
-      if (desired<1){ renderInputs(); return; }
+      const wItem = widthOf(item);
+      const desiredStart = val - (wItem - 1);
 
-      const coll = selectedItems.find(it=>{
-        if (it.groupId===gid) return false;
-        const ra=[desired, desired+offset];
-        const rb=[it.startPos, it.startPos+widthOf(it)-1];
-        return !(ra[1]<rb[0]||rb[1]<ra[0]);
-      });
-      if (coll){ alert('Posição conflita com outro quadro.'); renderInputs(); return; }
+      const capaLigada = document.getElementById('switchCapa').checked;
+      // Verifica se o destino está na faixa correta
+      if (capaLigada) {
+        if (desiredStart < 1 || desiredStart + wItem - 1 > CAPA_LIMIT) {
+          alert('Posição inválida na capa');
+          renderInputs();
+          return;
+        }
+      } else {
+        if (desiredStart < INTERNA_START) {
+          alert('Posição inválida nas internas');
+          renderInputs();
+          return;
+        }
+      }
 
-      item.startPos = desired;
+      const currentStart = item.startPos;
+      if (!currentStart || currentStart <= 0) {
+        renderInputs();
+        return;
+      }
+      if (desiredStart === currentStart) {
+        renderInputs();
+        return;
+      }
+
+      // Move o item para cima (mais cedo)
+      if (desiredStart < currentStart) {
+        selectedItems.forEach(other => {
+          if (other.groupId === gid) return;
+          const w = widthOf(other);
+          const otherStart = other.startPos;
+          const otherEnd   = otherStart + w - 1;
+          // Garante que só mexe em quadros da mesma seção (capa/internas)
+          if (capaLigada && otherStart >= INTERNA_START) return;
+          if (!capaLigada && otherStart <= CAPA_LIMIT) return;
+          if (otherEnd >= desiredStart && otherStart < currentStart) {
+            other.startPos += wItem;
+          }
+        });
+      } else {
+        // Move o item para baixo (mais tarde)
+        const currentEnd = currentStart + wItem - 1;
+        selectedItems.forEach(other => {
+          if (other.groupId === gid) return;
+          const w = widthOf(other);
+          const otherStart = other.startPos;
+          if (capaLigada && otherStart >= INTERNA_START) return;
+          if (!capaLigada && otherStart <= CAPA_LIMIT) return;
+          if (otherStart > currentEnd && otherStart <= desiredStart + wItem - 1) {
+            other.startPos -= wItem;
+          }
+        });
+      }
+
+      // Atualiza a posição do item
+      item.startPos = desiredStart;
+      selectedItems.sort((a,b) => a.startPos - b.startPos);
+
+      // Recalcula layout e inputs (respeitando validações)
       updateSelection();
     }
+
 
     /* -----------------------------------------------------------
         MARCAR TODOS, ACORDEÃO
